@@ -92,42 +92,42 @@ func testCases(t *testing.T, repo *cache.RepoCache) []*testCase {
 	require.NoError(t, err)
 
 	return []*testCase{
-		&testCase{
+		{
 			name:     "simple bug",
 			bug:      simpleBug,
 			numOp:    1,
 			numOpExp: 2,
 			numOpImp: 1,
 		},
-		&testCase{
+		{
 			name:     "bug with comments",
 			bug:      bugWithComments,
 			numOp:    2,
 			numOpExp: 4,
 			numOpImp: 2,
 		},
-		&testCase{
+		{
 			name:     "bug label change",
 			bug:      bugLabelChange,
 			numOp:    4,
 			numOpExp: 8,
 			numOpImp: 4,
 		},
-		&testCase{
+		{
 			name:     "bug with comment editions",
 			bug:      bugWithCommentEditions,
 			numOp:    4,
 			numOpExp: 8,
 			numOpImp: 2,
 		},
-		&testCase{
+		{
 			name:     "bug changed status",
 			bug:      bugStatusChanged,
 			numOp:    3,
 			numOpExp: 6,
 			numOpImp: 3,
 		},
-		&testCase{
+		{
 			name:     "bug title edited",
 			bug:      bugTitleEdited,
 			numOp:    2,
@@ -281,12 +281,13 @@ func TestGitlabPushPull(t *testing.T) {
 }
 
 func generateRepoName() string {
-	rand.Seed(time.Now().UnixNano())
-	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	letterRunes := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	b := make([]rune, 8)
 	for i := range b {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
+
 	return fmt.Sprintf("%s-%s", testRepoBaseName, string(b))
 }
 

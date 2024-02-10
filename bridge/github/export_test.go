@@ -287,12 +287,13 @@ func TestGithubPushPull(t *testing.T) {
 }
 
 func generateRepoName() string {
-	rand.Seed(time.Now().UnixNano())
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 	letterRunes := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	b := make([]rune, 8)
 	for i := range b {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
+
 	return fmt.Sprintf("%s-%s", testRepoBaseName, string(b))
 }
 
@@ -300,7 +301,6 @@ func generateRepoName() string {
 func createRepository(project, token string) error {
 	// This function use the V3 Github API because repository creation is not supported yet on the V4 API.
 	url := fmt.Sprintf("%s/user/repos", githubV3Url)
-
 	params := struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`

@@ -1,6 +1,6 @@
 module github.com/MichaelMure/git-bug
 
-go 1.19
+go 1.22
 
 // https://github.com/praetorian-inc/gokart/pull/84
 replace github.com/praetorian-inc/gokart v0.5.1 => github.com/selesy/gokart v0.5.2-rc1
@@ -24,6 +24,7 @@ require (
 	github.com/mattn/go-isatty v0.0.19
 	github.com/phayes/freeport v0.0.0-20171002181615-b8543db493a5
 	github.com/pkg/errors v0.9.1
+	github.com/praetorian-inc/gokart v0.5.1
 	github.com/shurcooL/githubv4 v0.0.0-20190601194912-068505affed7
 	github.com/skratchdot/open-golang v0.0.0-20190402232053-79abb63cd66e
 	github.com/spf13/cobra v1.7.0
@@ -31,11 +32,12 @@ require (
 	github.com/vbauerster/mpb/v8 v8.5.2
 	github.com/vektah/gqlparser/v2 v2.5.8
 	github.com/xanzy/go-gitlab v0.90.0
-	golang.org/x/crypto v0.12.0
 	golang.org/x/oauth2 v0.11.0
-	golang.org/x/sync v0.3.0
-	golang.org/x/sys v0.11.0
-	golang.org/x/text v0.12.0
+	golang.org/x/sync v0.6.0
+	golang.org/x/sys v0.16.0
+	golang.org/x/term v0.16.0
+	golang.org/x/text v0.14.0
+	golang.org/x/vuln v1.0.4
 )
 
 require (
@@ -57,7 +59,7 @@ require (
 	github.com/blevesearch/zap/v14 v14.0.5 // indirect
 	github.com/blevesearch/zap/v15 v15.0.3 // indirect
 	github.com/cloudflare/circl v1.3.3 // indirect
-	github.com/corpix/uarand v0.1.1 // indirect
+	github.com/corpix/uarand v0.2.0 // indirect
 	github.com/couchbase/vellum v1.0.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
@@ -91,12 +93,11 @@ require (
 	github.com/philhofer/fwd v1.0.0 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/praetorian-inc/gokart v0.5.1
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/sergi/go-diff v1.3.1 // indirect
-	github.com/shurcooL/graphql v0.0.0-20181231061246-d48a9a75455f // indirect
+	github.com/shurcooL/graphql v0.0.0-20230722043721-ed46e5a46466 // indirect
 	github.com/skeema/knownhosts v1.2.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/steveyen/gtreap v0.1.0 // indirect
@@ -108,12 +109,11 @@ require (
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/zclconf/go-cty v1.8.4 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
-	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/net v0.14.0 // indirect
-	golang.org/x/term v0.11.0
+	golang.org/x/crypto v0.18.0 // indirect
+	golang.org/x/mod v0.14.0 // indirect
+	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	golang.org/x/tools v0.9.3 // indirect
-	golang.org/x/vuln v1.0.0
+	golang.org/x/tools v0.17.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

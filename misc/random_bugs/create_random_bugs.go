@@ -59,7 +59,7 @@ func CommitRandomBugsWithSeed(repo repository.ClockedRepo, opts Options, seed in
 }
 
 func generateRandomBugsWithSeed(opts Options, seed int64) []*bug.Bug {
-	rand.Seed(seed)
+	rand.New(rand.NewSource(seed))
 	fake.Seed(seed)
 
 	// At the moment git-bug has a risk of hash collision is simple
@@ -89,7 +89,6 @@ func generateRandomBugsWithSeed(opts Options, seed int64) []*bug.Bug {
 			paragraphs(),
 			nil, nil,
 		)
-
 		if err != nil {
 			panic(err)
 		}
