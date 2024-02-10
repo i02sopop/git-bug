@@ -2,7 +2,7 @@ package termui
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 
 	"github.com/awesome-gocui/gocui"
 )
@@ -78,7 +78,7 @@ func (ip *inputPopup) close(g *gocui.Gui, v *gocui.View) error {
 func (ip *inputPopup) validate(g *gocui.Gui, v *gocui.View) error {
 	ip.title = ""
 
-	content, err := ioutil.ReadAll(v)
+	content, err := io.ReadAll(v)
 	if err != nil {
 		return err
 	}
@@ -97,6 +97,7 @@ func (ip *inputPopup) validate(g *gocui.Gui, v *gocui.View) error {
 
 func (ip *inputPopup) ActivateWithContent(title string, content string) <-chan string {
 	ip.preload = content
+
 	return ip.Activate(title)
 }
 
@@ -104,5 +105,6 @@ func (ip *inputPopup) Activate(title string) <-chan string {
 	ip.title = title
 	ip.active = true
 	ip.c = make(chan string)
+
 	return ip.c
 }

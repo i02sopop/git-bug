@@ -18,9 +18,7 @@ import (
 	"github.com/MichaelMure/git-bug/entity/dag"
 )
 
-var (
-	ErrMissingCredentials = errors.New("missing credentials")
-)
+var ErrMissingCredentials = errors.New("missing credentials")
 
 // jiraExporter implement the Exporter interface
 type jiraExporter struct {
@@ -76,7 +74,7 @@ func (je *jiraExporter) Init(ctx context.Context, repo *cache.RepoCache, conf co
 		panic("nil client")
 	}
 
-	je.project, err = client.GetProject(je.conf[confKeyProject])
+	je.project, err = client.GetProject(ctx, je.conf[confKeyProject])
 	if err != nil {
 		return err
 	}
@@ -261,8 +259,8 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 		}
 
 		// create bug
-		result, err := client.CreateIssue(
-			je.project.ID, createOp.Title, createOp.Message, fields)
+		result, err := client.CreateIssue(ctx, je.project.ID, createOp.Title,
+			createOp.Message, fields)
 		if err != nil {
 			err := errors.Wrap(err, "exporting jira issue")
 			out <- core.NewExportError(err, b.Id())
@@ -272,8 +270,7 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 		id := result.ID
 		out <- core.NewExportBug(b.Id())
 		// mark bug creation operation as exported
-		err = markOperationAsExported(
-			b, createOp.Id(), id, je.project.Key, time.Time{})
+		err = markOperationAsExported(b, createOp.Id(), id, je.project.Key, time.Time{})
 		if err != nil {
 			err := errors.Wrap(err, "marking operation as exported")
 			out <- core.NewExportError(err, b.Id())
@@ -294,7 +291,6 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 
 	// cache operation jira id
 	je.cachedOperationIDs[createOp.Id()] = bugJiraID
-
 	for _, op := range snapshot.Operations[1:] {
 		// ignore SetMetadata operations
 		if _, ok := op.(dag.OperationDoesntChangeSnapshot); ok {
@@ -322,7 +318,7 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 		var exportTime time.Time
 		switch opr := op.(type) {
 		case *bug.AddCommentOperation:
-			comment, err := client.AddComment(bugJiraID, opr.Message)
+			comment, err := client.AddComment(ctx, bugJiraID, opr.Message)
 			if err != nil {
 				err := errors.Wrap(err, "adding comment")
 				out <- core.NewExportError(err, b.Id())
@@ -338,7 +334,7 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 			if opr.Target == createOp.Id() {
 				// An EditCommentOpreation with the Target set to the create operation
 				// encodes a modification to the long-description/summary.
-				exportTime, err = client.UpdateIssueBody(bugJiraID, opr.Message)
+				exportTime, err = client.UpdateIssueBody(ctx, bugJiraID, opr.Message)
 				if err != nil {
 					err := errors.Wrap(err, "editing issue")
 					out <- core.NewExportError(err, b.Id())
@@ -356,7 +352,7 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 					// have cached the creation id.
 					panic("unexpected error: comment id not found")
 				}
-				comment, err := client.UpdateComment(bugJiraID, commentID, opr.Message)
+				comment, err := client.UpdateComment(ctx, bugJiraID, commentID, opr.Message)
 				if err != nil {
 					err := errors.Wrap(err, "editing comment")
 					out <- core.NewExportError(err, b.Id())
@@ -374,7 +370,7 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 		case *bug.SetStatusOperation:
 			jiraStatus, hasStatus := je.statusMap[opr.Status.String()]
 			if hasStatus {
-				exportTime, err = UpdateIssueStatus(client, bugJiraID, jiraStatus)
+				exportTime, err = UpdateIssueStatus(ctx, client, bugJiraID, jiraStatus)
 				if err != nil {
 					err := errors.Wrap(err, "editing status")
 					out <- core.NewExportWarning(err, b.Id())
@@ -401,8 +397,7 @@ func (je *jiraExporter) exportBug(ctx context.Context, b *cache.BugCache, out ch
 			id = bugJiraID
 
 		case *bug.LabelChangeOperation:
-			exportTime, err = client.UpdateLabels(
-				bugJiraID, opr.Added, opr.Removed)
+			exportTime, err = client.UpdateLabels(ctx, bugJiraID, opr.Added, opr.Removed)
 			if err != nil {
 				err := errors.Wrap(err, "updating labels")
 				out <- core.NewExportError(err, b.Id())
@@ -453,10 +448,10 @@ func markOperationAsExported(b *cache.BugCache, target entity.Id, jiraID, jiraPr
 // UpdateIssueStatus attempts to change the "status" field by finding a
 // transition which achieves the desired state and then performing that
 // transition
-func UpdateIssueStatus(client *Client, issueKeyOrID string, desiredStateNameOrID string) (time.Time, error) {
+func UpdateIssueStatus(ctx context.Context, client *Client, issueKeyOrID string, desiredStateNameOrID string) (time.Time, error) {
 	var responseTime time.Time
 
-	tlist, err := client.GetTransitions(issueKeyOrID)
+	tlist, err := client.GetTransitions(ctx, issueKeyOrID)
 	if err != nil {
 		return responseTime, err
 	}
@@ -466,7 +461,7 @@ func UpdateIssueStatus(client *Client, issueKeyOrID string, desiredStateNameOrID
 		return responseTime, errTransitionNotFound
 	}
 
-	responseTime, err = client.DoTransition(issueKeyOrID, transition.ID)
+	responseTime, err = client.DoTransition(ctx, issueKeyOrID, transition.ID)
 	if err != nil {
 		return responseTime, err
 	}

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -24,9 +24,7 @@ import (
 	"github.com/MichaelMure/git-bug/entity/dag"
 )
 
-var (
-	ErrMissingIdentityToken = errors.New("missing identity token")
-)
+var ErrMissingIdentityToken = errors.New("missing identity token")
 
 // githubExporter implement the Exporter interface
 type githubExporter struct {
@@ -251,7 +249,8 @@ func (ge *githubExporter) exportBug(ctx context.Context, b *cache.BugCache, out 
 		client, err := ge.getClientForIdentity(author.Id())
 		if err != nil {
 			// if bug is still not exported and we do not have the author stop the execution
-			out <- core.NewExportNothing(b.Id(), fmt.Sprintf("missing author token"))
+			out <- core.NewExportNothing(b.Id(), "missing author token")
+
 			return
 		}
 
@@ -260,6 +259,7 @@ func (ge *githubExporter) exportBug(ctx context.Context, b *cache.BugCache, out 
 		if err != nil {
 			err := errors.Wrap(err, "exporting github issue")
 			out <- core.NewExportError(err, b.Id())
+
 			return
 		}
 
@@ -269,6 +269,7 @@ func (ge *githubExporter) exportBug(ctx context.Context, b *cache.BugCache, out 
 		if err := markOperationAsExported(b, createOp.Id(), id, url); err != nil {
 			err := errors.Wrap(err, "marking operation as exported")
 			out <- core.NewExportError(err, b.Id())
+
 			return
 		}
 
@@ -276,6 +277,7 @@ func (ge *githubExporter) exportBug(ctx context.Context, b *cache.BugCache, out 
 		if err := b.CommitAsNeeded(); err != nil {
 			err := errors.Wrap(err, "bug commit")
 			out <- core.NewExportError(err, b.Id())
+
 			return
 		}
 
@@ -286,7 +288,6 @@ func (ge *githubExporter) exportBug(ctx context.Context, b *cache.BugCache, out 
 
 	// cache operation github id
 	ge.cachedOperationIDs[createOp.Id()] = bugGithubID
-
 	for _, op := range snapshot.Operations[1:] {
 		// ignore SetMetadata operations
 		if _, ok := op.(dag.OperationDoesntChangeSnapshot); ok {
@@ -452,7 +453,7 @@ func getRepositoryNodeID(ctx context.Context, token *auth.Token, owner, project 
 		NodeID string `json:"node_id"`
 	}{}
 
-	data, _ := ioutil.ReadAll(resp.Body)
+	data, _ := io.ReadAll(resp.Body)
 	err = resp.Body.Close()
 	if err != nil {
 		return "", err
@@ -564,7 +565,7 @@ func (ge *githubExporter) createGithubLabel(ctx context.Context, label, color st
 		Color  string `json:"color"`
 	}{}
 
-	data, _ = ioutil.ReadAll(resp.Body)
+	data, _ = io.ReadAll(resp.Body)
 	defer resp.Body.Close()
 
 	err = json.Unmarshal(data, &aux)
@@ -745,7 +746,6 @@ func (ge *githubExporter) updateGithubIssueTitle(ctx context.Context, gc *rateLi
 
 // update github issue labels
 func (ge *githubExporter) updateGithubIssueLabels(ctx context.Context, gc *rateLimitHandlerClient, labelableID string, added, removed []bug.Label) error {
-
 	wg, ctx := errgroup.WithContext(ctx)
 	if len(added) > 0 {
 		wg.Go(func() error {

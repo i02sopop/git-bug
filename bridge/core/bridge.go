@@ -17,8 +17,10 @@ import (
 	"github.com/MichaelMure/git-bug/repository"
 )
 
-var ErrImportNotSupported = errors.New("import is not supported")
-var ErrExportNotSupported = errors.New("export is not supported")
+var (
+	ErrImportNotSupported = errors.New("import is not supported")
+	ErrExportNotSupported = errors.New("export is not supported")
+)
 
 const (
 	ConfigKeyTarget = "target"
@@ -28,8 +30,10 @@ const (
 	bridgeConfigKeyPrefix = "git-bug.bridge"
 )
 
-var bridgeImpl map[string]reflect.Type
-var bridgeLoginMetaKey map[string]string
+var (
+	bridgeImpl         map[string]reflect.Type
+	bridgeLoginMetaKey map[string]string
+)
 
 // Bridge is a wrapper around a BridgeImpl that will bind low-level
 // implementation with utility code to provide high-level functions.
@@ -202,10 +206,10 @@ func RemoveBridge(repo repository.RepoConfig, name string) error {
 }
 
 // Configure run the target specific configuration process
-func (b *Bridge) Configure(params BridgeParams, interactive bool) error {
+func (b *Bridge) Configure(ctx context.Context, params BridgeParams, interactive bool) error {
 	validateParams(params, b.impl)
 
-	conf, err := b.impl.Configure(b.repo, params, interactive)
+	conf, err := b.impl.Configure(ctx, b.repo, params, interactive)
 	if err != nil {
 		return err
 	}

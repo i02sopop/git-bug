@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -19,9 +19,11 @@ import (
 	"github.com/MichaelMure/git-bug/entities/bug"
 )
 
-var errDone = errors.New("Iteration Done")
-var errTransitionNotFound = errors.New("Transition not found")
-var errTransitionNotAllowed = errors.New("Transition not allowed")
+var (
+	errDone                 = errors.New("Iteration Done")
+	errTransitionNotFound   = errors.New("Transition not found")
+	errTransitionNotAllowed = errors.New("Transition not allowed")
+)
 
 // =============================================================================
 // Extended JSON
@@ -311,6 +313,7 @@ type ServerInfo struct {
 type ClientTransport struct {
 	underlyingTransport http.RoundTripper
 	basicAuthString     string
+	token               string
 }
 
 // RoundTrip overrides the default by adding the content-type header
@@ -321,10 +324,18 @@ func (ct *ClientTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			fmt.Sprintf("Basic %s", ct.basicAuthString))
 	}
 
+	if ct.token != "" {
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", ct.token))
+	}
+
 	return ct.underlyingTransport.RoundTrip(req)
 }
 
-func (ct *ClientTransport) SetCredentials(username string, token string) {
+func (ct *ClientTransport) SetToken(token string) {
+	ct.token = token
+}
+
+func (ct *ClientTransport) SetCredentials(username, token string) {
 	credString := fmt.Sprintf("%s:%s", username, token)
 	ct.basicAuthString = base64.StdEncoding.EncodeToString([]byte(credString))
 }
@@ -334,28 +345,27 @@ func (ct *ClientTransport) SetCredentials(username string, token string) {
 type Client struct {
 	*http.Client
 	serverURL string
-	ctx       context.Context
 }
 
 // NewClient Construct a new client connected to the provided server and
 // utilizing the given context for asynchronous events
-func NewClient(ctx context.Context, serverURL string) *Client {
+func NewClient(serverURL string) *Client {
 	cookiJar, _ := cookiejar.New(nil)
 	client := &http.Client{
 		Transport: &ClientTransport{underlyingTransport: http.DefaultTransport},
 		Jar:       cookiJar,
 	}
 
-	return &Client{client, serverURL, ctx}
+	return &Client{client, serverURL}
 }
 
 // Login POST credentials to the /session endpoint and get a session cookie
-func (client *Client) Login(credType, login, password string) error {
+func (client *Client) Login(ctx context.Context, credType, login, password string) error {
 	switch credType {
 	case "SESSION":
-		return client.RefreshSessionToken(login, password)
+		return client.RefreshSessionToken(ctx, login, password)
 	case "TOKEN":
-		return client.SetTokenCredentials(login, password)
+		return client.SetTokenCredentials(password)
 	default:
 		panic("unknown Jira cred type")
 	}
@@ -363,7 +373,7 @@ func (client *Client) Login(credType, login, password string) error {
 
 // RefreshSessionToken formulate the JSON request object from the user
 // credentials and POST it to the /session endpoint and get a session cookie
-func (client *Client) RefreshSessionToken(username, password string) error {
+func (client *Client) RefreshSessionToken(ctx context.Context, username, password string) error {
 	params := SessionQuery{
 		Username: username,
 		Password: password,
@@ -374,24 +384,24 @@ func (client *Client) RefreshSessionToken(username, password string) error {
 		return err
 	}
 
-	return client.RefreshSessionTokenRaw(data)
+	return client.RefreshSessionTokenRaw(ctx, data)
 }
 
 // SetTokenCredentials POST credentials to the /session endpoint and get a
 // session cookie
-func (client *Client) SetTokenCredentials(username, password string) error {
+func (client *Client) SetTokenCredentials(token string) error {
 	switch transport := client.Transport.(type) {
 	case *ClientTransport:
-		transport.SetCredentials(username, password)
+		transport.SetToken(token)
 	default:
-		return fmt.Errorf("Invalid transport type")
+		return fmt.Errorf("invalid transport type")
 	}
 	return nil
 }
 
 // RefreshSessionTokenRaw POST credentials to the /session endpoint and get a
 // session cookie
-func (client *Client) RefreshSessionTokenRaw(credentialsJSON []byte) error {
+func (client *Client) RefreshSessionTokenRaw(ctx context.Context, credentialsJSON []byte) error {
 	postURL := fmt.Sprintf("%s/rest/auth/1/session", client.serverURL)
 
 	req, err := http.NewRequest("POST", postURL, bytes.NewBuffer(credentialsJSON))
@@ -407,8 +417,8 @@ func (client *Client) RefreshSessionTokenRaw(credentialsJSON []byte) error {
 		client.Jar.SetCookies(urlobj, []*http.Cookie{})
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		req = req.WithContext(ctx)
 	}
@@ -421,12 +431,13 @@ func (client *Client) RefreshSessionTokenRaw(credentialsJSON []byte) error {
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		content, _ := ioutil.ReadAll(response.Body)
-		return fmt.Errorf(
-			"error creating token %v: %s", response.StatusCode, content)
+		content, _ := io.ReadAll(response.Body)
+
+		return fmt.Errorf("error creating token %v: %s", response.StatusCode,
+			content)
 	}
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	var aux SessionResponse
 	err = json.Unmarshal(data, &aux)
 	if err != nil {
@@ -450,7 +461,7 @@ func (client *Client) RefreshSessionTokenRaw(credentialsJSON []byte) error {
 
 // Search Perform an issue a JQL search on the /search endpoint
 // https://docs.atlassian.com/software/jira/docs/api/REST/8.2.6/#api/2/search
-func (client *Client) Search(jql string, maxResults int, startAt int) (*SearchResult, error) {
+func (client *Client) Search(ctx context.Context, jql string, maxResults int, startAt int) (*SearchResult, error) {
 	url := fmt.Sprintf("%s/rest/api/2/search", client.serverURL)
 
 	requestBody, err := json.Marshal(SearchRequest{
@@ -464,7 +475,9 @@ func (client *Client) Search(jql string, maxResults int, startAt int) (*SearchRe
 			"description",
 			"labels",
 			"status",
-			"summary"}})
+			"summary",
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -474,8 +487,8 @@ func (client *Client) Search(jql string, maxResults int, startAt int) (*SearchRe
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
@@ -495,10 +508,11 @@ func (client *Client) Search(jql string, maxResults int, startAt int) (*SearchRe
 
 	var message SearchResult
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &message)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -534,7 +548,7 @@ func (si *SearchIterator) HasNext() bool {
 
 // Next Return the next item in the result set and advance the iterator.
 // Advancing the iterator may require fetching a new page.
-func (si *SearchIterator) Next() *Issue {
+func (si *SearchIterator) Next(ctx context.Context) *Issue {
 	if si.Err != nil {
 		return nil
 	}
@@ -549,8 +563,8 @@ func (si *SearchIterator) Next() *Issue {
 		} else {
 			// There are still more pages to fetch, so fetch the next page and
 			// cache it
-			si.searchResult, si.Err = si.client.Search(
-				si.jql, si.pageSize, si.searchResult.NextStartAt())
+			si.searchResult, si.Err = si.client.Search(ctx, si.jql, si.pageSize,
+				si.searchResult.NextStartAt())
 			// NOTE(josh): we don't deal with the error now, we just cache it.
 			// HasNext() will return false and the caller can check the error
 			// afterward.
@@ -561,8 +575,8 @@ func (si *SearchIterator) Next() *Issue {
 }
 
 // IterSearch return an iterator over paginated results for a JQL search
-func (client *Client) IterSearch(jql string, pageSize int) *SearchIterator {
-	result, err := client.Search(jql, pageSize, 0)
+func (client *Client) IterSearch(ctx context.Context, jql string, pageSize int) *SearchIterator {
+	result, err := client.Search(ctx, jql, pageSize, 0)
 
 	iter := &SearchIterator{
 		client:       client,
@@ -578,9 +592,9 @@ func (client *Client) IterSearch(jql string, pageSize int) *SearchIterator {
 
 // GetIssue fetches an issue object via the /issue/{IssueIdOrKey} endpoint
 // https://docs.atlassian.com/software/jira/docs/api/REST/8.2.6/#api/2/issue
-func (client *Client) GetIssue(idOrKey string, fields []string, expand []string,
-	properties []string) (*Issue, error) {
-
+func (client *Client) GetIssue(ctx context.Context, idOrKey string, fields []string, expand []string,
+	properties []string,
+) (*Issue, error) {
 	url := fmt.Sprintf("%s/rest/api/2/issue/%s", client.serverURL, idOrKey)
 
 	request, err := http.NewRequest("GET", url, nil)
@@ -601,8 +615,8 @@ func (client *Client) GetIssue(idOrKey string, fields []string, expand []string,
 	}
 	request.URL.RawQuery = query.Encode()
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
@@ -623,10 +637,10 @@ func (client *Client) GetIssue(idOrKey string, fields []string, expand []string,
 
 	var issue Issue
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &issue)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
 		return nil, err
 	}
 
@@ -636,13 +650,13 @@ func (client *Client) GetIssue(idOrKey string, fields []string, expand []string,
 // GetComments returns a page of comments via the issue/{IssueIdOrKey}/comment
 // endpoint
 // https://docs.atlassian.com/software/jira/docs/api/REST/8.2.6/#api/2/issue-getComment
-func (client *Client) GetComments(idOrKey string, maxResults int, startAt int) (*CommentPage, error) {
+func (client *Client) GetComments(ctx context.Context, idOrKey string, maxResults int, startAt int) (*CommentPage, error) {
 	url := fmt.Sprintf(
 		"%s/rest/api/2/issue/%s/comment", client.serverURL, idOrKey)
 
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		err := fmt.Errorf("Creating request %v", err)
+		err := fmt.Errorf("creating request %w", err)
 		return nil, err
 	}
 
@@ -655,32 +669,33 @@ func (client *Client) GetComments(idOrKey string, maxResults int, startAt int) (
 	}
 	request.URL.RawQuery = query.Encode()
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
+
 		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s", response.StatusCode,
+		err := fmt.Errorf("HTTP response %d, query was %s", response.StatusCode,
 			request.URL.String())
 		return nil, err
 	}
 
 	var comments CommentPage
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &comments)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -716,7 +731,7 @@ func (ci *CommentIterator) HasNext() bool {
 
 // Next Return the next item in the result set and advance the iterator.
 // Advancing the iterator may require fetching a new page.
-func (ci *CommentIterator) Next() *Comment {
+func (ci *CommentIterator) Next(ctx context.Context) *Comment {
 	if ci.Err != nil {
 		return nil
 	}
@@ -731,8 +746,8 @@ func (ci *CommentIterator) Next() *Comment {
 		} else {
 			// There are still more pages to fetch, so fetch the next page and
 			// cache it
-			ci.message, ci.Err = ci.client.GetComments(
-				ci.idOrKey, ci.pageSize, ci.message.NextStartAt())
+			ci.message, ci.Err = ci.client.GetComments(ctx, ci.idOrKey, ci.pageSize,
+				ci.message.NextStartAt())
 			// NOTE(josh): we don't deal with the error now, we just cache it.
 			// HasNext() will return false and the caller can check the error
 			// afterward.
@@ -743,8 +758,8 @@ func (ci *CommentIterator) Next() *Comment {
 }
 
 // IterComments returns an iterator over paginated comments within an issue
-func (client *Client) IterComments(idOrKey string, pageSize int) *CommentIterator {
-	message, err := client.GetComments(idOrKey, pageSize, 0)
+func (client *Client) IterComments(ctx context.Context, idOrKey string, pageSize int) *CommentIterator {
+	message, err := client.GetComments(ctx, idOrKey, pageSize, 0)
 
 	iter := &CommentIterator{
 		client:   client,
@@ -763,7 +778,7 @@ func (client *Client) IterComments(idOrKey string, pageSize int) *CommentIterato
 // /issue/{IssueIdOrKey} with (fields=*none&expand=changelog)
 // (for JIRA server)
 // https://docs.atlassian.com/software/jira/docs/api/REST/8.2.6/#api/2/issue
-func (client *Client) GetChangeLog(idOrKey string, maxResults int, startAt int) (*ChangeLogPage, error) {
+func (client *Client) GetChangeLog(ctx context.Context, idOrKey string, maxResults int, startAt int) (*ChangeLogPage, error) {
 	url := fmt.Sprintf(
 		"%s/rest/api/2/issue/%s/changelog", client.serverURL, idOrKey)
 
@@ -782,8 +797,8 @@ func (client *Client) GetChangeLog(idOrKey string, maxResults int, startAt int) 
 	}
 	request.URL.RawQuery = query.Encode()
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
@@ -801,8 +816,8 @@ func (client *Client) GetChangeLog(idOrKey string, maxResults int, startAt int) 
 		// query the issue and ask for a changelog expansion. Unfortunately this means
 		// that the changelog is not paginated and we have to fetch the entire thing
 		// at once. Hopefully things don't break for very long changelogs.
-		issue, err := client.GetIssue(
-			idOrKey, []string{"*none"}, []string{"changelog"}, []string{})
+		issue, err := client.GetIssue(ctx, idOrKey, []string{"*none"},
+			[]string{"changelog"}, []string{})
 		if err != nil {
 			return nil, err
 		}
@@ -819,10 +834,11 @@ func (client *Client) GetChangeLog(idOrKey string, maxResults int, startAt int) 
 
 	var changelog ChangeLogPage
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &changelog)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -864,7 +880,7 @@ func (cli *ChangeLogIterator) HasNext() bool {
 
 // Next Return the next item in the result set and advance the iterator.
 // Advancing the iterator may require fetching a new page.
-func (cli *ChangeLogIterator) Next() *ChangeLogEntry {
+func (cli *ChangeLogIterator) Next(ctx context.Context) *ChangeLogEntry {
 	if cli.Err != nil {
 		return nil
 	}
@@ -879,8 +895,8 @@ func (cli *ChangeLogIterator) Next() *ChangeLogEntry {
 		} else {
 			// There are still more pages to fetch, so fetch the next page and
 			// cache it
-			cli.message, cli.Err = cli.client.GetChangeLog(
-				cli.idOrKey, cli.pageSize, cli.message.NextStartAt())
+			cli.message, cli.Err = cli.client.GetChangeLog(ctx, cli.idOrKey,
+				cli.pageSize, cli.message.NextStartAt())
 			// NOTE(josh): we don't deal with the error now, we just cache it.
 			// HasNext() will return false and the caller can check the error
 			// afterward.
@@ -891,8 +907,8 @@ func (cli *ChangeLogIterator) Next() *ChangeLogEntry {
 }
 
 // IterChangeLog returns an iterator over entries in the changelog for an issue
-func (client *Client) IterChangeLog(idOrKey string, pageSize int) *ChangeLogIterator {
-	message, err := client.GetChangeLog(idOrKey, pageSize, 0)
+func (client *Client) IterChangeLog(ctx context.Context, idOrKey string, pageSize int) *ChangeLogIterator {
+	message, err := client.GetChangeLog(ctx, idOrKey, pageSize, 0)
 
 	iter := &ChangeLogIterator{
 		client:   client,
@@ -907,7 +923,7 @@ func (client *Client) IterChangeLog(idOrKey string, pageSize int) *ChangeLogIter
 }
 
 // GetProject returns the project JSON object given its id or key
-func (client *Client) GetProject(projectIDOrKey string) (*Project, error) {
+func (client *Client) GetProject(ctx context.Context, projectIDOrKey string) (*Project, error) {
 	url := fmt.Sprintf(
 		"%s/rest/api/2/project/%s", client.serverURL, projectIDOrKey)
 
@@ -916,8 +932,8 @@ func (client *Client) GetProject(projectIDOrKey string) (*Project, error) {
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
@@ -937,10 +953,11 @@ func (client *Client) GetProject(projectIDOrKey string) (*Project, error) {
 
 	var project Project
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &project)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -948,9 +965,9 @@ func (client *Client) GetProject(projectIDOrKey string) (*Project, error) {
 }
 
 // CreateIssue creates a new JIRA issue and returns it
-func (client *Client) CreateIssue(projectIDOrKey, title, body string,
-	extra map[string]interface{}) (*IssueCreateResult, error) {
-
+func (client *Client) CreateIssue(ctx context.Context, projectIDOrKey, title, body string,
+	extra map[string]interface{},
+) (*IssueCreateResult, error) {
 	url := fmt.Sprintf("%s/rest/api/2/issue", client.serverURL)
 
 	fields := make(map[string]interface{})
@@ -982,33 +999,34 @@ func (client *Client) CreateIssue(projectIDOrKey, title, body string,
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
+
 		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusCreated {
-		content, _ := ioutil.ReadAll(response.Body)
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s\n  data: %s\n  response: %s",
+		content, _ := io.ReadAll(response.Body)
+		err := fmt.Errorf("HTTP response %d, query was %s\n  data: %s\n  response: %s",
 			response.StatusCode, request.URL.String(), data, content)
 		return nil, err
 	}
 
 	var result IssueCreateResult
 
-	data, _ = ioutil.ReadAll(response.Body)
+	data, _ = io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &result)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -1017,7 +1035,6 @@ func (client *Client) CreateIssue(projectIDOrKey, title, body string,
 
 // UpdateIssueTitle changes the "summary" field of a JIRA issue
 func (client *Client) UpdateIssueTitle(issueKeyOrID, title string) (time.Time, error) {
-
 	url := fmt.Sprintf(
 		"%s/rest/api/2/issue/%s", client.serverURL, issueKeyOrID)
 	var responseTime time.Time
@@ -1042,16 +1059,17 @@ func (client *Client) UpdateIssueTitle(issueKeyOrID, title string) (time.Time, e
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
 		return responseTime, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusNoContent {
-		content, _ := ioutil.ReadAll(response.Body)
+		content, _ := io.ReadAll(response.Body)
 		err := fmt.Errorf(
 			"HTTP response %d, query was %s\n  data: %s\n  response: %s",
 			response.StatusCode, request.URL.String(), data, content)
+
 		return responseTime, err
 	}
 
@@ -1071,10 +1089,8 @@ func (client *Client) UpdateIssueTitle(issueKeyOrID, title string) (time.Time, e
 }
 
 // UpdateIssueBody changes the "description" field of a JIRA issue
-func (client *Client) UpdateIssueBody(issueKeyOrID, body string) (time.Time, error) {
-
-	url := fmt.Sprintf(
-		"%s/rest/api/2/issue/%s", client.serverURL, issueKeyOrID)
+func (client *Client) UpdateIssueBody(ctx context.Context, issueKeyOrID, body string) (time.Time, error) {
+	url := fmt.Sprintf("%s/rest/api/2/issue/%s", client.serverURL, issueKeyOrID)
 	var responseTime time.Time
 	// NOTE(josh): Since updates are a list of heterogeneous objects let's just
 	// manually build the JSON text
@@ -1094,24 +1110,24 @@ func (client *Client) UpdateIssueBody(issueKeyOrID, body string) (time.Time, err
 		return responseTime, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
 		return responseTime, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusNoContent {
-		content, _ := ioutil.ReadAll(response.Body)
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s\n  data: %s\n  response: %s",
+		content, _ := io.ReadAll(response.Body)
+		err := fmt.Errorf("HTTP response %d, query was %s\n  data: %s\n  response: %s",
 			response.StatusCode, request.URL.String(), data, content)
+
 		return responseTime, err
 	}
 
@@ -1131,7 +1147,7 @@ func (client *Client) UpdateIssueBody(issueKeyOrID, body string) (time.Time, err
 }
 
 // AddComment adds a new comment to an issue (and returns it).
-func (client *Client) AddComment(issueKeyOrID, body string) (*Comment, error) {
+func (client *Client) AddComment(ctx context.Context, issueKeyOrID, body string) (*Comment, error) {
 	url := fmt.Sprintf(
 		"%s/rest/api/2/issue/%s/comment", client.serverURL, issueKeyOrID)
 
@@ -1146,33 +1162,35 @@ func (client *Client) AddComment(issueKeyOrID, body string) (*Comment, error) {
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
+
 		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusCreated {
-		content, _ := ioutil.ReadAll(response.Body)
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s\n  data: %s\n  response: %s",
+		content, _ := io.ReadAll(response.Body)
+		err := fmt.Errorf("HTTP response %d, query was %s\n  data: %s\n  response: %s",
 			response.StatusCode, request.URL.String(), data, content)
+
 		return nil, err
 	}
 
 	var result Comment
 
-	data, _ = ioutil.ReadAll(response.Body)
+	data, _ = io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &result)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -1180,12 +1198,11 @@ func (client *Client) AddComment(issueKeyOrID, body string) (*Comment, error) {
 }
 
 // UpdateComment changes the text of a comment
-func (client *Client) UpdateComment(issueKeyOrID, commentID, body string) (
-	*Comment, error) {
-	url := fmt.Sprintf(
-		"%s/rest/api/2/issue/%s/comment/%s", client.serverURL, issueKeyOrID,
-		commentID)
-
+func (client *Client) UpdateComment(ctx context.Context, issueKeyOrID, commentID, body string) (
+	*Comment, error,
+) {
+	url := fmt.Sprintf("%s/rest/api/2/issue/%s/comment/%s", client.serverURL,
+		issueKeyOrID, commentID)
 	params := CommentCreate{Body: body}
 	data, err := json.Marshal(params)
 	if err != nil {
@@ -1197,8 +1214,8 @@ func (client *Client) UpdateComment(issueKeyOrID, commentID, body string) (
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
@@ -1211,18 +1228,18 @@ func (client *Client) UpdateComment(issueKeyOrID, commentID, body string) (
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s", response.StatusCode,
+		err := fmt.Errorf("HTTP response %d, query was %s", response.StatusCode,
 			request.URL.String())
 		return nil, err
 	}
 
 	var result Comment
 
-	data, _ = ioutil.ReadAll(response.Body)
+	data, _ = io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &result)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -1230,9 +1247,8 @@ func (client *Client) UpdateComment(issueKeyOrID, commentID, body string) (
 }
 
 // UpdateLabels changes labels for an issue
-func (client *Client) UpdateLabels(issueKeyOrID string, added, removed []bug.Label) (time.Time, error) {
-	url := fmt.Sprintf(
-		"%s/rest/api/2/issue/%s/", client.serverURL, issueKeyOrID)
+func (client *Client) UpdateLabels(ctx context.Context, issueKeyOrID string, added, removed []bug.Label) (time.Time, error) {
+	url := fmt.Sprintf("%s/rest/api/2/issue/%s/", client.serverURL, issueKeyOrID)
 	var responseTime time.Time
 
 	// NOTE(josh): Since updates are a list of heterogeneous objects let's just
@@ -1247,10 +1263,12 @@ func (client *Client) UpdateLabels(issueKeyOrID string, added, removed []bug.Lab
 		_, _ = fmt.Fprintf(&buffer, `{"add":"%s"}`, label)
 		first = false
 	}
+
 	for _, label := range removed {
 		if !first {
 			_, _ = fmt.Fprintf(&buffer, ",")
 		}
+
 		_, _ = fmt.Fprintf(&buffer, `{"remove":"%s"}`, label)
 		first = false
 	}
@@ -1262,24 +1280,25 @@ func (client *Client) UpdateLabels(issueKeyOrID string, added, removed []bug.Lab
 		return responseTime, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
+
 		return responseTime, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusNoContent {
-		content, _ := ioutil.ReadAll(response.Body)
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s\n  data: %s\n  response: %s",
+		content, _ := io.ReadAll(response.Body)
+		err := fmt.Errorf("HTTP response %d, query was %s\n  data: %s\n  response: %s",
 			response.StatusCode, request.URL.String(), data, content)
+
 		return responseTime, err
 	}
 
@@ -1299,43 +1318,42 @@ func (client *Client) UpdateLabels(issueKeyOrID string, added, removed []bug.Lab
 }
 
 // GetTransitions returns a list of available transitions for an issue
-func (client *Client) GetTransitions(issueKeyOrID string) (*TransitionList, error) {
-
-	url := fmt.Sprintf(
-		"%s/rest/api/2/issue/%s/transitions", client.serverURL, issueKeyOrID)
+func (client *Client) GetTransitions(ctx context.Context, issueKeyOrID string) (*TransitionList, error) {
+	url := fmt.Sprintf("%s/rest/api/2/issue/%s/transitions", client.serverURL, issueKeyOrID)
 
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		err := fmt.Errorf("Creating request %v", err)
+		err := fmt.Errorf("creating request %w", err)
+
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
+
 		return nil, err
 	}
-	defer response.Body.Close()
 
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s", response.StatusCode,
+		err := fmt.Errorf("HTTP response %d, query was %s", response.StatusCode,
 			request.URL.String())
 		return nil, err
 	}
 
 	var message TransitionList
-
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &message)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -1350,11 +1368,12 @@ func getTransitionTo(tlist *TransitionList, desiredStateNameOrID string) *Transi
 			return &transition
 		}
 	}
+
 	return nil
 }
 
 // DoTransition changes the "status" of an issue
-func (client *Client) DoTransition(issueKeyOrID string, transitionID string) (time.Time, error) {
+func (client *Client) DoTransition(ctx context.Context, issueKeyOrID string, transitionID string) (time.Time, error) {
 	url := fmt.Sprintf(
 		"%s/rest/api/2/issue/%s/transitions", client.serverURL, issueKeyOrID)
 	var responseTime time.Time
@@ -1372,8 +1391,8 @@ func (client *Client) DoTransition(issueKeyOrID string, transitionID string) (ti
 		return responseTime, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
@@ -1409,41 +1428,43 @@ func (client *Client) DoTransition(issueKeyOrID string, transitionID string) (ti
 
 // GetServerInfo Fetch server information from the /serverinfo endpoint
 // https://docs.atlassian.com/software/jira/docs/api/REST/8.2.6/#api/2/issue
-func (client *Client) GetServerInfo() (*ServerInfo, error) {
+func (client *Client) GetServerInfo(ctx context.Context) (*ServerInfo, error) {
 	url := fmt.Sprintf("%s/rest/api/2/serverinfo", client.serverURL)
 
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		err := fmt.Errorf("Creating request %v", err)
+		err := fmt.Errorf("creating request %w", err)
 		return nil, err
 	}
 
-	if client.ctx != nil {
-		ctx, cancel := context.WithTimeout(client.ctx, defaultTimeout)
+	if ctx != nil {
+		ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		request = request.WithContext(ctx)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		err := fmt.Errorf("Performing request %v", err)
+		err := fmt.Errorf("performing request %w", err)
+
 		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		err := fmt.Errorf(
-			"HTTP response %d, query was %s", response.StatusCode,
+		err := fmt.Errorf("HTTP response %d, query was %s", response.StatusCode,
 			request.URL.String())
+
 		return nil, err
 	}
 
 	var message ServerInfo
 
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := io.ReadAll(response.Body)
 	err = json.Unmarshal(data, &message)
 	if err != nil {
-		err := fmt.Errorf("Decoding response %v", err)
+		err := fmt.Errorf("decoding response %w", err)
+
 		return nil, err
 	}
 
@@ -1451,9 +1472,9 @@ func (client *Client) GetServerInfo() (*ServerInfo, error) {
 }
 
 // GetServerTime returns the current time on the server
-func (client *Client) GetServerTime() (Time, error) {
+func (client *Client) GetServerTime(ctx context.Context) (Time, error) {
 	var result Time
-	info, err := client.GetServerInfo()
+	info, err := client.GetServerInfo(ctx)
 	if err != nil {
 		return result, err
 	}

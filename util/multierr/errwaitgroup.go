@@ -89,10 +89,11 @@ func (g *ErrWaitGroup) TryGo(f func() error) bool {
 
 		if err := f(); err != nil {
 			g.mu.Lock()
-			err = Join(g.err, err)
+			g.err = Join(g.err, err)
 			g.mu.Unlock()
 		}
 	}()
+
 	return true
 }
 

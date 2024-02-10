@@ -12,7 +12,7 @@ import (
 	"github.com/MichaelMure/git-bug/util/colors"
 )
 
-func newBridgeAuthCommand(env *execenv.Env) *cobra.Command {
+func newBridgeAuthCommand(env *execenv.Env) (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:     "auth",
 		Short:   "List all known bridge authentication credentials",
@@ -23,11 +23,16 @@ func newBridgeAuthCommand(env *execenv.Env) *cobra.Command {
 		Args: cobra.NoArgs,
 	}
 
-	cmd.AddCommand(newBridgeAuthAddTokenCommand(env))
+	subCmd, err := newBridgeAuthAddTokenCommand(env)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd.AddCommand(subCmd)
 	cmd.AddCommand(newBridgeAuthRm(env))
 	cmd.AddCommand(newBridgeAuthShow(env))
 
-	return cmd
+	return cmd, nil
 }
 
 func runBridgeAuth(env *execenv.Env) error {

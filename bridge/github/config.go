@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -24,9 +24,7 @@ import (
 
 const githubClientID = "ce3600aa56c2e69f18a5" // git-bug org
 
-var (
-	ErrBadProjectURL = errors.New("bad project url")
-)
+var ErrBadProjectURL = errors.New("bad project url")
 
 func (g *Github) ValidParams() map[string]interface{} {
 	return map[string]interface{}{
@@ -39,7 +37,7 @@ func (g *Github) ValidParams() map[string]interface{} {
 	}
 }
 
-func (g *Github) Configure(repo *cache.RepoCache, params core.BridgeParams, interactive bool) (core.Configuration, error) {
+func (g *Github) Configure(_ context.Context, repo *cache.RepoCache, params core.BridgeParams, interactive bool) (core.Configuration, error) {
 	var err error
 	var owner string
 	var project string
@@ -60,7 +58,7 @@ func (g *Github) Configure(repo *cache.RepoCache, params core.BridgeParams, inte
 	default:
 		// terminal prompt
 		if !interactive {
-			return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the remote repository with --owner and --project, or via --url option.")
+			return nil, fmt.Errorf("non-interactive-mode is active. Please specify the remote repository with --owner and --project, or via --url option")
 		}
 		owner, project, err = promptURL(repo)
 		if err != nil {
@@ -102,8 +100,9 @@ func (g *Github) Configure(repo *cache.RepoCache, params core.BridgeParams, inte
 	default:
 		if params.Login == "" {
 			if !interactive {
-				return nil, fmt.Errorf("Non-interactive-mode is active. Please specify a login via the --login option.")
+				return nil, fmt.Errorf("non-interactive-mode is active. Please specify a login via the --login option")
 			}
+
 			login, err = promptLogin()
 		} else {
 			// validate login and override with the correct case
@@ -117,8 +116,9 @@ func (g *Github) Configure(repo *cache.RepoCache, params core.BridgeParams, inte
 		}
 
 		if !interactive {
-			return nil, fmt.Errorf("Non-interactive-mode is active. Please specify a access token via the --token option.")
+			return nil, fmt.Errorf("non-interactive-mode is active. Please specify a access token via the --token option")
 		}
+
 		cred, err = promptTokenOptions(repo, login, owner, project)
 		if err != nil {
 			return nil, err
@@ -233,7 +233,7 @@ func requestUserVerificationCode(scope string) (*githRespT, error) {
 		return nil, fmt.Errorf("unexpected response status code %d from Github API", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "error requesting user verification code")
 	}
@@ -284,7 +284,7 @@ func pollGithubForAuthorization(deviceCode string, intervalSec int64) (string, e
 			return "", fmt.Errorf("unexpected response status code %d from Github API", resp.StatusCode)
 		}
 
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			_ = resp.Body.Close()
 			return "", errors.Wrap(err, "error polling the Github API")
@@ -490,7 +490,7 @@ func validateUsername(username string) (bool, string, error) {
 		return false, "", nil
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, "", err
 	}

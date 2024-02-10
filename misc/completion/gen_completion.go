@@ -26,12 +26,18 @@ func main() {
 		wg.Add(1)
 		go func(name string, f func(*cobra.Command) error) {
 			defer wg.Done()
-			root := commands.NewRootCommand()
-			err := f(root)
+			root, err := commands.NewRootCommand()
 			if err != nil {
 				fmt.Printf("  - %s: %v\n", name, err)
 				return
 			}
+
+			err = f(root)
+			if err != nil {
+				fmt.Printf("  - %s: %v\n", name, err)
+				return
+			}
+
 			fmt.Printf("  - %s: ok\n", name)
 		}(name, f)
 	}

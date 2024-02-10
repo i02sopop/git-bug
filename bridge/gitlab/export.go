@@ -19,9 +19,7 @@ import (
 	"github.com/MichaelMure/git-bug/entity/dag"
 )
 
-var (
-	ErrMissingIdentityToken = errors.New("missing identity token")
-)
+var ErrMissingIdentityToken = errors.New("missing identity token")
 
 // gitlabExporter implement the Exporter interface
 type gitlabExporter struct {
@@ -208,7 +206,7 @@ func (ge *gitlabExporter) exportBug(ctx context.Context, b *cache.BugCache, out 
 		client, err := ge.getIdentityClient(author.Id())
 		if err != nil {
 			// if bug is still not exported and we do not have the author stop the execution
-			out <- core.NewExportNothing(b.Id(), fmt.Sprintf("missing author token"))
+			out <- core.NewExportNothing(b.Id(), "missing author token")
 			return
 		}
 

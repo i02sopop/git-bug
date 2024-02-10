@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 
 	"github.com/MichaelMure/git-bug/bridge/core/auth"
 	"github.com/MichaelMure/git-bug/util/colors"
@@ -91,13 +91,13 @@ loop:
 
 // PromptPassword is a specialized text input that doesn't display the characters entered.
 func PromptPassword(prompt, name string, validators ...PromptValidator) (string, error) {
-	termState, err := terminal.GetState(int(syscall.Stdin))
+	termState, err := term.GetState(int(syscall.Stdin))
 	if err != nil {
 		return "", err
 	}
 
 	cancel := interrupt.RegisterCleaner(func() error {
-		return terminal.Restore(int(syscall.Stdin), termState)
+		return term.Restore(int(syscall.Stdin), termState)
 	})
 	defer cancel()
 
@@ -105,7 +105,7 @@ loop:
 	for {
 		_, _ = fmt.Fprintf(os.Stderr, "%s: ", prompt)
 
-		bytePassword, err := terminal.ReadPassword(int(syscall.Stdin))
+		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
 		// new line for coherent formatting, ReadPassword clip the normal new line
 		// entered by the user
 		fmt.Println()

@@ -115,7 +115,7 @@ func testConfig(t *testing.T, config Config) {
 	}, all)
 
 	// missing section + case insensitive
-	val, err = config.ReadString("section2.opt1")
+	_, err = config.ReadString("section2.opt1")
 	require.Error(t, err)
 
 	val, err = config.ReadString("section.opt1")

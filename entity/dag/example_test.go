@@ -37,11 +37,12 @@ type Snapshot struct {
 
 // HasAdministrator returns true if the given identity is included in the administrator.
 func (snap *Snapshot) HasAdministrator(i identity.Interface) bool {
-	for admin, _ := range snap.Administrator {
+	for admin := range snap.Administrator {
 		if admin.Id() == i.Id() {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -175,15 +176,17 @@ func (ra *RemoveAdministrator) Apply(snapshot *Snapshot) {
 	}
 	// special rule: we can't end up with no administrator
 	stillSome := false
-	for admin, _ := range snapshot.Administrator {
+	for admin := range snapshot.Administrator {
 		if admin != ra.Author() {
 			stillSome = true
 			break
 		}
 	}
+
 	if !stillSome {
 		return
 	}
+
 	// apply
 	for _, toRemove := range ra.ToRemove {
 		delete(snapshot.Administrator, toRemove)
@@ -336,7 +339,7 @@ func Example_entity() {
 
 	// Compile gives the current state of the config
 	snapshot := confIsaac.Compile()
-	for admin, _ := range snapshot.Administrator {
+	for admin := range snapshot.Administrator {
 		fmt.Println(admin.DisplayName())
 	}
 

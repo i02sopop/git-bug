@@ -167,6 +167,8 @@ func TestGithubPushPull(t *testing.T) {
 	cleanToken := func() error {
 		return auth.Remove(repo, token.ID())
 	}
+
+	// nolint: errcheck
 	defer cleanToken()
 	interrupt.RegisterCleaner(cleanToken)
 
@@ -286,7 +288,7 @@ func TestGithubPushPull(t *testing.T) {
 
 func generateRepoName() string {
 	rand.Seed(time.Now().UnixNano())
-	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	letterRunes := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	b := make([]rune, 8)
 	for i := range b {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]

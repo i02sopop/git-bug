@@ -69,7 +69,8 @@ func NewSubCache[EntityT entity.Interface, ExcerptT Excerpt, CacheT CacheEntity]
 	makeIndexData func(CacheT) []string,
 	actions Actions[EntityT],
 	typename, namespace string,
-	version uint, maxLoaded int) *SubCache[EntityT, ExcerptT, CacheT] {
+	version uint, maxLoaded int,
+) *SubCache[EntityT, ExcerptT, CacheT] {
 	return &SubCache[EntityT, ExcerptT, CacheT]{
 		repo:            repo,
 		resolvers:       resolvers,
@@ -510,11 +511,12 @@ func (sc *SubCache[EntityT, ExcerptT, CacheT]) RemoveAll() error {
 		return err
 	}
 
-	for id, _ := range sc.cached {
+	for id := range sc.cached {
 		delete(sc.cached, id)
 		sc.lru.Remove(id)
 	}
-	for id, _ := range sc.excerpts {
+
+	for id := range sc.excerpts {
 		delete(sc.excerpts, id)
 	}
 
@@ -575,7 +577,6 @@ func (sc *SubCache[EntityT, ExcerptT, CacheT]) MergeAll(remote string) <-chan en
 	}()
 
 	return out
-
 }
 
 func (sc *SubCache[EntityT, ExcerptT, CacheT]) GetNamespace() string {

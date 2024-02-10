@@ -15,11 +15,13 @@ import (
 )
 
 // These variables are initialized externally during the build. See the Makefile.
-var GitCommit string
-var GitLastTag string
-var GitExactTag string
+var (
+	GitCommit   string
+	GitLastTag  string
+	GitExactTag string
+)
 
-func NewRootCommand() *cobra.Command {
+func NewRootCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   execenv.RootCommandName,
 		Short: "A bug tracker embedded in Git",
@@ -64,26 +66,45 @@ the same git remote you are already using to collaborate with other people.
 
 	env := execenv.NewEnv()
 
-	addCmdWithGroup(bugcmd.NewBugCommand(env), entityGroup)
-	addCmdWithGroup(usercmd.NewUserCommand(env), entityGroup)
-	addCmdWithGroup(newLabelCommand(env), entityGroup)
+	subCmd, err := usercmd.NewUserCommand(env)
+	if err != nil {
+		return nil, err
+	}
 
+	addCmdWithGroup(subCmd, entityGroup)
+	subCmd, err = bugcmd.NewBugCommand(env)
+	if err != nil {
+		return nil, err
+	}
+
+	addCmdWithGroup(subCmd, entityGroup)
+	addCmdWithGroup(newLabelCommand(env), entityGroup)
 	addCmdWithGroup(newTermUICommand(env), uiGroup)
 	addCmdWithGroup(newWebUICommand(env), uiGroup)
 
+	subCmd, err = bridgecmd.NewBridgeCommand(env)
+	if err != nil {
+		return nil, err
+	}
+
+	addCmdWithGroup(subCmd, remoteGroup)
 	addCmdWithGroup(newPullCommand(env), remoteGroup)
 	addCmdWithGroup(newPushCommand(env), remoteGroup)
-	addCmdWithGroup(bridgecmd.NewBridgeCommand(env), remoteGroup)
 
 	cmd.AddCommand(newCommandsCommand(env))
 	cmd.AddCommand(newVersionCommand(env))
 	cmd.AddCommand(newWipeCommand(env))
 
-	return cmd
+	return cmd, nil
 }
 
 func Execute() {
-	if err := NewRootCommand().Execute(); err != nil {
+	cmd, err := NewRootCommand()
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
@@ -108,6 +129,7 @@ func getVersion() string {
 		if dirty {
 			return fmt.Sprintf("dev-%.10s-dirty", commit)
 		}
+
 		return fmt.Sprintf("dev-%.10s", commit)
 	}
 

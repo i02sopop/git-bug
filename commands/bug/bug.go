@@ -35,7 +35,7 @@ type bugOptions struct {
 	outputFormatChanged bool
 }
 
-func NewBugCommand(env *execenv.Env) *cobra.Command {
+func NewBugCommand(env *execenv.Env) (*cobra.Command, error) {
 	options := bugOptions{}
 
 	cmd := &cobra.Command{
@@ -69,36 +69,72 @@ git bug status:open --by creation "foo bar" baz
 
 	flags.StringSliceVarP(&options.statusQuery, "status", "s", nil,
 		"Filter by status. Valid values are [open,closed]")
-	cmd.RegisterFlagCompletionFunc("status", completion.From([]string{"open", "closed"}))
+	err := cmd.RegisterFlagCompletionFunc("status", completion.From([]string{"open", "closed"}))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringSliceVarP(&options.authorQuery, "author", "a", nil,
 		"Filter by author")
 	flags.StringSliceVarP(&options.metadataQuery, "metadata", "m", nil,
 		"Filter by metadata. Example: github-url=URL")
-	cmd.RegisterFlagCompletionFunc("author", completion.UserForQuery(env))
+	err = cmd.RegisterFlagCompletionFunc("author", completion.UserForQuery(env))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringSliceVarP(&options.participantQuery, "participant", "p", nil,
 		"Filter by participant")
-	cmd.RegisterFlagCompletionFunc("participant", completion.UserForQuery(env))
+	err = cmd.RegisterFlagCompletionFunc("participant", completion.UserForQuery(env))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringSliceVarP(&options.actorQuery, "actor", "A", nil,
 		"Filter by actor")
-	cmd.RegisterFlagCompletionFunc("actor", completion.UserForQuery(env))
+	err = cmd.RegisterFlagCompletionFunc("actor", completion.UserForQuery(env))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringSliceVarP(&options.labelQuery, "label", "l", nil,
 		"Filter by label")
-	cmd.RegisterFlagCompletionFunc("label", completion.Label(env))
+	err = cmd.RegisterFlagCompletionFunc("label", completion.Label(env))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringSliceVarP(&options.titleQuery, "title", "t", nil,
 		"Filter by title")
 	flags.StringSliceVarP(&options.noQuery, "no", "n", nil,
 		"Filter by absence of something. Valid values are [label]")
-	cmd.RegisterFlagCompletionFunc("no", completion.Label(env))
+	err = cmd.RegisterFlagCompletionFunc("no", completion.Label(env))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringVarP(&options.sortBy, "by", "b", "creation",
 		"Sort the results by a characteristic. Valid values are [id,creation,edit]")
-	cmd.RegisterFlagCompletionFunc("by", completion.From([]string{"id", "creation", "edit"}))
+	err = cmd.RegisterFlagCompletionFunc("by", completion.From([]string{"id", "creation", "edit"}))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringVarP(&options.sortDirection, "direction", "d", "asc",
 		"Select the sorting direction. Valid values are [asc,desc]")
-	cmd.RegisterFlagCompletionFunc("direction", completion.From([]string{"asc", "desc"}))
+	err = cmd.RegisterFlagCompletionFunc("direction", completion.From([]string{"asc", "desc"}))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringVarP(&options.outputFormat, "format", "f", "default",
 		"Select the output formatting style. Valid values are [default,plain,id,json,org-mode]")
-	cmd.RegisterFlagCompletionFunc("format",
-		completion.From([]string{"default", "plain", "id", "json", "org-mode"}))
+	err = cmd.RegisterFlagCompletionFunc("format", completion.From([]string{
+		"default", "plain", "id", "json", "org-mode",
+	}))
+	if err != nil {
+		return nil, err
+	}
 
 	const selectGroup = "select"
 	cmd.AddGroup(&cobra.Group{ID: selectGroup, Title: "Implicit selection"})
@@ -111,15 +147,20 @@ git bug status:open --by creation "foo bar" baz
 	addCmdWithGroup(newBugDeselectCommand(env), selectGroup)
 	addCmdWithGroup(newBugSelectCommand(env), selectGroup)
 
+	sumCmd, err := newBugShowCommand(env)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd.AddCommand(sumCmd)
 	cmd.AddCommand(newBugCommentCommand(env))
 	cmd.AddCommand(newBugLabelCommand(env))
 	cmd.AddCommand(newBugNewCommand(env))
 	cmd.AddCommand(newBugRmCommand(env))
-	cmd.AddCommand(newBugShowCommand(env))
 	cmd.AddCommand(newBugStatusCommand(env))
 	cmd.AddCommand(newBugTitleCommand(env))
 
-	return cmd
+	return cmd, nil
 }
 
 func runBug(env *execenv.Env, opts bugOptions, args []string) error {

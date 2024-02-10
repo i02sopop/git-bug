@@ -29,11 +29,6 @@ type LPPerson struct {
 	Login string `json:"name"`
 }
 
-// Caching all the LPPerson we know.
-// The keys are links to an owner page, such as
-// https://api.launchpad.net/devel/~login
-var personCache = make(map[string]LPPerson)
-
 // LPBug describes a Launchpad bug.
 type LPBug struct {
 	Title       string   `json:"title"`

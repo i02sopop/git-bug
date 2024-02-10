@@ -16,7 +16,7 @@ type userOptions struct {
 	format string
 }
 
-func NewUserCommand(env *execenv.Env) *cobra.Command {
+func NewUserCommand(env *execenv.Env) (*cobra.Command, error) {
 	options := userOptions{}
 
 	cmd := &cobra.Command{
@@ -28,8 +28,13 @@ func NewUserCommand(env *execenv.Env) *cobra.Command {
 		}),
 	}
 
+	subCmd, err := newUserShowCommand(env)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd.AddCommand(newUserNewCommand(env))
-	cmd.AddCommand(newUserShowCommand(env))
+	cmd.AddCommand(subCmd)
 	cmd.AddCommand(newUserAdoptCommand(env))
 
 	flags := cmd.Flags()
@@ -37,9 +42,12 @@ func NewUserCommand(env *execenv.Env) *cobra.Command {
 
 	flags.StringVarP(&options.format, "format", "f", "default",
 		"Select the output formatting style. Valid values are [default,json]")
-	cmd.RegisterFlagCompletionFunc("format", completion.From([]string{"default", "json"}))
+	err = cmd.RegisterFlagCompletionFunc("format", completion.From([]string{"default", "json"}))
+	if err != nil {
+		return nil, err
+	}
 
-	return cmd
+	return cmd, nil
 }
 
 func runUser(env *execenv.Env, opts userOptions) error {

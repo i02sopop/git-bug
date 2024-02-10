@@ -63,11 +63,13 @@ func (*Jira) NewExporter() core.Exporter {
 }
 
 func buildClient(ctx context.Context, baseURL string, credType string, cred auth.Credential) (*Client, error) {
-	client := NewClient(ctx, baseURL)
+	client := NewClient(baseURL)
 
 	var login, password string
 
 	switch cred := cred.(type) {
+	case *auth.Token:
+		password = cred.Value
 	case *auth.LoginPassword:
 		login = cred.Login
 		password = cred.Password
@@ -80,7 +82,7 @@ func buildClient(ctx context.Context, baseURL string, credType string, cred auth
 		password = p
 	}
 
-	err := client.Login(credType, login, password)
+	err := client.Login(ctx, credType, login, password)
 	if err != nil {
 		return nil, err
 	}

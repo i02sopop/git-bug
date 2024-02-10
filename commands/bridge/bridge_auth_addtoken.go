@@ -24,7 +24,7 @@ type bridgeAuthAddTokenOptions struct {
 	user   string
 }
 
-func newBridgeAuthAddTokenCommand(env *execenv.Env) *cobra.Command {
+func newBridgeAuthAddTokenCommand(env *execenv.Env) (*cobra.Command, error) {
 	options := bridgeAuthAddTokenOptions{}
 
 	cmd := &cobra.Command{
@@ -42,14 +42,21 @@ func newBridgeAuthAddTokenCommand(env *execenv.Env) *cobra.Command {
 
 	flags.StringVarP(&options.target, "target", "t", "",
 		fmt.Sprintf("The target of the bridge. Valid values are [%s]", strings.Join(bridge.Targets(), ",")))
-	cmd.RegisterFlagCompletionFunc("target", completion.From(bridge.Targets()))
+	err := cmd.RegisterFlagCompletionFunc("target", completion.From(bridge.Targets()))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringVarP(&options.login,
 		"login", "l", "", "The login in the remote bug-tracker")
 	flags.StringVarP(&options.user,
 		"user", "u", "", "The user to add the token to. Default is the current user")
-	cmd.RegisterFlagCompletionFunc("user", completion.User(env))
+	err = cmd.RegisterFlagCompletionFunc("user", completion.User(env))
+	if err != nil {
+		return nil, err
+	}
 
-	return cmd
+	return cmd, nil
 }
 
 func runBridgeAuthAddToken(env *execenv.Env, opts bridgeAuthAddTokenOptions, args []string) error {

@@ -19,7 +19,7 @@ type bugShowOptions struct {
 	format string
 }
 
-func newBugShowCommand(env *execenv.Env) *cobra.Command {
+func newBugShowCommand(env *execenv.Env) (*cobra.Command, error) {
 	options := bugShowOptions{}
 
 	cmd := &cobra.Command{
@@ -35,15 +35,21 @@ func newBugShowCommand(env *execenv.Env) *cobra.Command {
 	flags := cmd.Flags()
 	flags.SortFlags = false
 
-	fields := []string{"author", "authorEmail", "createTime", "lastEdit", "humanId",
-		"id", "labels", "shortId", "status", "title", "actors", "participants"}
+	fields := []string{
+		"author", "authorEmail", "createTime", "lastEdit", "humanId",
+		"id", "labels", "shortId", "status", "title", "actors", "participants",
+	}
 	flags.StringVarP(&options.fields, "field", "", "",
 		"Select field to display. Valid values are ["+strings.Join(fields, ",")+"]")
-	cmd.RegisterFlagCompletionFunc("by", completion.From(fields))
+	err := cmd.RegisterFlagCompletionFunc("by", completion.From(fields))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringVarP(&options.format, "format", "f", "default",
 		"Select the output formatting style. Valid values are [default,json,org-mode]")
 
-	return cmd
+	return cmd, nil
 }
 
 func runBugShow(env *execenv.Env, opts bugShowOptions, args []string) error {
@@ -53,7 +59,6 @@ func runBugShow(env *execenv.Env, opts bugShowOptions, args []string) error {
 	}
 
 	snap := b.Snapshot()
-
 	if len(snap.Comments) == 0 {
 		return errors.New("invalid bug: no comment")
 	}
@@ -127,7 +132,7 @@ func showDefaultFormatter(env *execenv.Env, snapshot *bug.Snapshot) error {
 	)
 
 	// Labels
-	var labels = make([]string, len(snapshot.Labels))
+	labels := make([]string, len(snapshot.Labels))
 	for i := range snapshot.Labels {
 		labels[i] = string(snapshot.Labels[i])
 	}
@@ -137,7 +142,7 @@ func showDefaultFormatter(env *execenv.Env, snapshot *bug.Snapshot) error {
 	)
 
 	// Actors
-	var actors = make([]string, len(snapshot.Actors))
+	actors := make([]string, len(snapshot.Actors))
 	for i := range snapshot.Actors {
 		actors[i] = snapshot.Actors[i].DisplayName()
 	}
@@ -147,7 +152,7 @@ func showDefaultFormatter(env *execenv.Env, snapshot *bug.Snapshot) error {
 	)
 
 	// Participants
-	var participants = make([]string, len(snapshot.Participants))
+	participants := make([]string, len(snapshot.Participants))
 	for i := range snapshot.Participants {
 		participants[i] = snapshot.Participants[i].DisplayName()
 	}
@@ -210,7 +215,7 @@ func showOrgModeFormatter(env *execenv.Env, snapshot *bug.Snapshot) error {
 	)
 
 	// Labels
-	var labels = make([]string, len(snapshot.Labels))
+	labels := make([]string, len(snapshot.Labels))
 	for i, label := range snapshot.Labels {
 		labels[i] = string(label)
 	}
@@ -223,7 +228,7 @@ func showOrgModeFormatter(env *execenv.Env, snapshot *bug.Snapshot) error {
 	}
 
 	// Actors
-	var actors = make([]string, len(snapshot.Actors))
+	actors := make([]string, len(snapshot.Actors))
 	for i, actor := range snapshot.Actors {
 		actors[i] = fmt.Sprintf("%s %s",
 			actor.Id().Human(),
@@ -236,7 +241,7 @@ func showOrgModeFormatter(env *execenv.Env, snapshot *bug.Snapshot) error {
 	)
 
 	// Participants
-	var participants = make([]string, len(snapshot.Participants))
+	participants := make([]string, len(snapshot.Participants))
 	for i, participant := range snapshot.Participants {
 		participants[i] = fmt.Sprintf("%s %s",
 			participant.Id().Human(),

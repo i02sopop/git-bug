@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -17,9 +18,7 @@ import (
 	"github.com/MichaelMure/git-bug/repository"
 )
 
-var (
-	ErrBadProjectURL = errors.New("bad project url")
-)
+var ErrBadProjectURL = errors.New("bad project url")
 
 func (g *Gitlab) ValidParams() map[string]interface{} {
 	return map[string]interface{}{
@@ -31,7 +30,7 @@ func (g *Gitlab) ValidParams() map[string]interface{} {
 	}
 }
 
-func (g *Gitlab) Configure(repo *cache.RepoCache, params core.BridgeParams, interactive bool) (core.Configuration, error) {
+func (g *Gitlab) Configure(_ context.Context, repo *cache.RepoCache, params core.BridgeParams, interactive bool) (core.Configuration, error) {
 	var err error
 	var baseUrl string
 
@@ -40,8 +39,9 @@ func (g *Gitlab) Configure(repo *cache.RepoCache, params core.BridgeParams, inte
 		baseUrl = params.BaseURL
 	default:
 		if !interactive {
-			return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the gitlab instance URL via the --base-url option.")
+			return nil, fmt.Errorf("non-interactive-mode is active. Please specify the gitlab instance URL via the --base-url option")
 		}
+
 		baseUrl, err = input.PromptDefault("Gitlab server URL", "URL", defaultBaseURL, input.Required, input.IsURL)
 		if err != nil {
 			return nil, errors.Wrap(err, "base url prompt")
@@ -57,7 +57,7 @@ func (g *Gitlab) Configure(repo *cache.RepoCache, params core.BridgeParams, inte
 	default:
 		// terminal prompt
 		if !interactive {
-			return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the gitlab project URL via the --url option.")
+			return nil, fmt.Errorf("non-interactive-mode is active. Please specify the gitlab project URL via the --url option")
 		}
 		projectURL, err = promptProjectURL(repo, baseUrl)
 		if err != nil {

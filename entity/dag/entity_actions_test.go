@@ -126,8 +126,6 @@ func assertMergeResults(t *testing.T, expected []entity.MergeResult, results <-c
 			require.NotNil(t, result.Entity)
 			require.Equal(t, expected[i].Id, result.Entity.Id())
 		}
-
-		i++
 	}
 }
 

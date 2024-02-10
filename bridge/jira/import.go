@@ -90,8 +90,8 @@ func (ji *jiraImporter) ImportAll(ctx context.Context, repo *cache.RepoCache, si
 	go func() {
 		defer close(ji.out)
 
-		message, err := ji.client.Search(
-			fmt.Sprintf("project=%s AND updatedDate>\"%s\"", project, sinceStr), 0, 0)
+		message, err := ji.client.Search(ctx, fmt.Sprintf("project=%s AND updatedDate>\"%s\"",
+			project, sinceStr), 0, 0)
 		if err != nil {
 			out <- core.NewImportError(err, "")
 			return
@@ -101,9 +101,8 @@ func (ji *jiraImporter) ImportAll(ctx context.Context, repo *cache.RepoCache, si
 
 		jql := fmt.Sprintf("project=%s AND updatedDate>\"%s\"", project, sinceStr)
 		var searchIter *SearchIterator
-		for searchIter =
-			ji.client.IterSearch(jql, defaultPageSize); searchIter.HasNext(); {
-			issue := searchIter.Next()
+		for searchIter = ji.client.IterSearch(ctx, jql, defaultPageSize); searchIter.HasNext(); {
+			issue := searchIter.Next(ctx)
 			b, err := ji.ensureIssue(repo, *issue)
 			if err != nil {
 				err := fmt.Errorf("issue creation: %v", err)
@@ -112,14 +111,14 @@ func (ji *jiraImporter) ImportAll(ctx context.Context, repo *cache.RepoCache, si
 			}
 
 			var commentIter *CommentIterator
-			for commentIter =
-				ji.client.IterComments(issue.ID, defaultPageSize); commentIter.HasNext(); {
-				comment := commentIter.Next()
+			for commentIter = ji.client.IterComments(ctx, issue.ID, defaultPageSize); commentIter.HasNext(); {
+				comment := commentIter.Next(ctx)
 				err := ji.ensureComment(repo, b, *comment)
 				if err != nil {
 					out <- core.NewImportError(err, "")
 				}
 			}
+
 			if commentIter.HasError() {
 				out <- core.NewImportError(commentIter.Err, "")
 			}
@@ -128,9 +127,8 @@ func (ji *jiraImporter) ImportAll(ctx context.Context, repo *cache.RepoCache, si
 			opIdx := 0
 
 			var changelogIter *ChangeLogIterator
-			for changelogIter =
-				ji.client.IterChangeLog(issue.ID, defaultPageSize); changelogIter.HasNext(); {
-				changelogEntry := changelogIter.Next()
+			for changelogIter = ji.client.IterChangeLog(ctx, issue.ID, defaultPageSize); changelogIter.HasNext(); {
+				changelogEntry := changelogIter.Next(ctx)
 
 				// Advance the operation iterator up to the first operation which has
 				// an export date not before the changelog entry date. If the changelog
@@ -381,7 +379,6 @@ func labelSetsMatch(jiraSet []string, gitbugSet []bug.Label) bool {
 // Create a bug.Operation (or a series of operations) from a JIRA changelog
 // entry
 func (ji *jiraImporter) ensureChange(repo *cache.RepoCache, b *cache.BugCache, entry ChangeLogEntry, potentialOp dag.Operation) error {
-
 	// If we have an operation which is already mapped to the entire changelog
 	// entry then that means this changelog entry was induced by an export
 	// operation and we've already done the match, so we skip this one

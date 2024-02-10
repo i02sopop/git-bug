@@ -38,14 +38,15 @@ func (*Jira) ValidParams() map[string]interface{} {
 }
 
 // Configure sets up the bridge configuration
-func (j *Jira) Configure(repo *cache.RepoCache, params core.BridgeParams, interactive bool) (core.Configuration, error) {
+func (j *Jira) Configure(ctx context.Context, repo *cache.RepoCache, params core.BridgeParams, interactive bool) (core.Configuration, error) {
 	var err error
 
 	baseURL := params.BaseURL
 	if baseURL == "" {
 		if !interactive {
-			return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the JIRA server URL via the --base-url option.")
+			return nil, fmt.Errorf("non-interactive-mode is active. Please specify the JIRA server URL via the --base-url option")
 		}
+
 		// terminal prompt
 		baseURL, err = input.Prompt("JIRA server URL", "URL", input.Required, input.IsURL)
 		if err != nil {
@@ -56,8 +57,9 @@ func (j *Jira) Configure(repo *cache.RepoCache, params core.BridgeParams, intera
 	project := params.Project
 	if project == "" {
 		if !interactive {
-			return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the JIRA project key via the --project option.")
+			return nil, fmt.Errorf("non-interactive-mode is active. Please specify the JIRA project key via the --project option")
 		}
+
 		project, err = input.Prompt("JIRA project key", "project", input.Required)
 		if err != nil {
 			return nil, err
@@ -74,16 +76,19 @@ func (j *Jira) Configure(repo *cache.RepoCache, params core.BridgeParams, intera
 		if err != nil {
 			return nil, err
 		}
+
 		l, ok := cred.GetMetadata(auth.MetaKeyLogin)
 		if !ok {
 			return nil, fmt.Errorf("credential doesn't have a login")
 		}
+
 		login = l
 	default:
 		if params.Login == "" {
 			if !interactive {
-				return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the login name via the --login option.")
+				return nil, fmt.Errorf("non-interactive-mode is active. Please specify the login name via the --login option")
 			}
+
 			login, err = input.Prompt("JIRA login", "login", input.Required)
 			if err != nil {
 				return nil, err
@@ -91,17 +96,19 @@ func (j *Jira) Configure(repo *cache.RepoCache, params core.BridgeParams, intera
 		} else {
 			login = params.Login
 		}
-		// TODO: validate username
 
+		// TODO: validate username
 		if params.TokenRaw == "" {
 			if !interactive {
-				return nil, fmt.Errorf("Non-interactive-mode is active. Please specify the access token via the --token option.")
+				return nil, fmt.Errorf("non-interactive-mode is active. Please specify the access token via the --token option")
 			}
+
 			fmt.Println(credTypeText)
 			credTypeInput, err := input.PromptChoice("Authentication mechanism", []string{"SESSION", "TOKEN"})
 			if err != nil {
 				return nil, err
 			}
+
 			credType = []string{"SESSION", "TOKEN"}[credTypeInput]
 			cred, err = promptCredOptions(repo, login, baseURL)
 			if err != nil {
@@ -125,19 +132,17 @@ func (j *Jira) Configure(repo *cache.RepoCache, params core.BridgeParams, intera
 	}
 
 	fmt.Printf("Attempting to login with credentials...\n")
-	client, err := buildClient(context.TODO(), baseURL, credType, cred)
+	client, err := buildClient(ctx, baseURL, credType, cred)
 	if err != nil {
 		return nil, err
 	}
 
 	// verify access to the project with credentials
 	fmt.Printf("Checking project ...\n")
-	_, err = client.GetProject(project)
+	_, err = client.GetProject(ctx, project)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Project %s doesn't exist on %s, or authentication credentials for (%s)"+
-				" are invalid",
-			project, baseURL, login)
+		return nil, fmt.Errorf("Project %s doesn't exist on %s, or authentication"+
+			" credentials for (%s) are invalid", project, baseURL, login)
 	}
 
 	// don't forget to store the now known valid token
@@ -164,15 +169,19 @@ func (*Jira) ValidateConfig(conf core.Configuration) error {
 	} else if v != target {
 		return fmt.Errorf("unexpected target name: %v", v)
 	}
+
 	if _, ok := conf[confKeyBaseUrl]; !ok {
 		return fmt.Errorf("missing %s key", confKeyBaseUrl)
 	}
+
 	if _, ok := conf[confKeyProject]; !ok {
 		return fmt.Errorf("missing %s key", confKeyProject)
 	}
+
 	if _, ok := conf[confKeyCredentialType]; !ok {
 		return fmt.Errorf("missing %s key", confKeyCredentialType)
 	}
+
 	if _, ok := conf[confKeyDefaultLogin]; !ok {
 		return fmt.Errorf("missing %s key", confKeyDefaultLogin)
 	}

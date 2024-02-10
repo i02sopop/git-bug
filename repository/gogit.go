@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,11 +26,15 @@ import (
 	"github.com/MichaelMure/git-bug/util/lamport"
 )
 
-const clockPath = "clocks"
-const indexPath = "indexes"
+const (
+	clockPath = "clocks"
+	indexPath = "indexes"
+)
 
-var _ ClockedRepo = &GoGitRepo{}
-var _ TestedRepo = &GoGitRepo{}
+var (
+	_ ClockedRepo = &GoGitRepo{}
+	_ TestedRepo  = &GoGitRepo{}
+)
 
 type GoGitRepo struct {
 	// Unfortunately, some parts of go-git are not thread-safe so we have to cover them with a big fat mutex here.
@@ -325,7 +328,6 @@ func (repo *GoGitRepo) GetCoreEditor() (string, error) {
 		if _, err = execabs.LookPath(cmd); err == nil {
 			return cmd, nil
 		}
-
 	}
 
 	return "ed", nil
@@ -493,7 +495,7 @@ func (repo *GoGitRepo) ReadData(hash Hash) ([]byte, error) {
 	}
 
 	// TODO: return a io.Reader instead
-	return ioutil.ReadAll(r)
+	return io.ReadAll(r)
 }
 
 // StoreTree will store a mapping key-->Hash as a Git tree
@@ -785,7 +787,7 @@ func (repo *GoGitRepo) AllClocks() (map[string]lamport.Clock, error) {
 
 	result := make(map[string]lamport.Clock)
 
-	files, err := ioutil.ReadDir(filepath.Join(repo.localStorage.Root(), clockPath))
+	files, err := os.ReadDir(filepath.Join(repo.localStorage.Root(), clockPath))
 	if os.IsNotExist(err) {
 		return nil, nil
 	}

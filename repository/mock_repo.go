@@ -14,8 +14,10 @@ import (
 	"github.com/MichaelMure/git-bug/util/lamport"
 )
 
-var _ ClockedRepo = &mockRepo{}
-var _ TestedRepo = &mockRepo{}
+var (
+	_ ClockedRepo = &mockRepo{}
+	_ TestedRepo  = &mockRepo{}
+)
 
 // mockRepo defines an instance of Repo that can be used for testing.
 type mockRepo struct {
@@ -196,6 +198,7 @@ loop:
 			}
 		}
 	}
+
 	return ids, nil
 }
 
@@ -209,9 +212,10 @@ func (m *mockIndex) Remove(id string) error {
 }
 
 func (m *mockIndex) Clear() error {
-	for k, _ := range *m {
+	for k := range *m {
 		delete(*m, k)
 	}
+
 	return nil
 }
 

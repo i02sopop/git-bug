@@ -27,7 +27,6 @@ func Parse(query string) (*Query, error) {
 		switch t.kind {
 		case tokenKindSearch:
 			q.Search = append(q.Search, t.term)
-			break
 
 		case tokenKindKV:
 			switch t.qualifier {

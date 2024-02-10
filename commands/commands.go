@@ -36,11 +36,15 @@ func newCommandsCommand(env *execenv.Env) *cobra.Command {
 func runCommands(env *execenv.Env, opts commandOptions) error {
 	first := true
 
-	var allCmds []*cobra.Command
-	queue := []*cobra.Command{NewRootCommand()}
+	cmd, err := NewRootCommand()
+	if err != nil {
+		return err
+	}
 
+	var allCmds []*cobra.Command
+	queue := []*cobra.Command{cmd}
 	for len(queue) > 0 {
-		cmd := queue[0]
+		cmd = queue[0]
 		queue = queue[1:]
 		allCmds = append(allCmds, cmd)
 		queue = append(queue, cmd.Commands()...)

@@ -2,6 +2,7 @@ package bridgecmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -26,9 +27,8 @@ type bridgeNewOptions struct {
 	nonInteractive bool
 }
 
-func newBridgeNewCommand(env *execenv.Env) *cobra.Command {
+func newBridgeNewCommand(env *execenv.Env) (*cobra.Command, error) {
 	options := bridgeNewOptions{}
-
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Configure a new bridge",
@@ -88,7 +88,7 @@ git bug bridge new \
     --token=$(TOKEN)`,
 		PreRunE: execenv.LoadBackend(env),
 		RunE: execenv.CloseBackend(env, func(cmd *cobra.Command, args []string) error {
-			return runBridgeNew(env, options)
+			return runBridgeNew(cmd.Context(), env, options)
 		}),
 	}
 
@@ -98,7 +98,11 @@ git bug bridge new \
 	flags.StringVarP(&options.name, "name", "n", "", "A distinctive name to identify the bridge")
 	flags.StringVarP(&options.target, "target", "t", "",
 		fmt.Sprintf("The target of the bridge. Valid values are [%s]", strings.Join(bridge.Targets(), ",")))
-	cmd.RegisterFlagCompletionFunc("target", completion.From(bridge.Targets()))
+	err := cmd.RegisterFlagCompletionFunc("target", completion.From(bridge.Targets()))
+	if err != nil {
+		return nil, err
+	}
+
 	flags.StringVarP(&options.params.URL, "url", "u", "", "The URL of the remote repository")
 	flags.StringVarP(&options.params.BaseURL, "base-url", "b", "", "The base URL of your remote issue tracker")
 	flags.StringVarP(&options.params.Login, "login", "l", "", "The login on your remote issue tracker")
@@ -109,10 +113,10 @@ git bug bridge new \
 	flags.StringVarP(&options.params.Project, "project", "p", "", "The name of the remote repository")
 	flags.BoolVar(&options.nonInteractive, "non-interactive", false, "Do not ask for user input")
 
-	return cmd
+	return cmd, nil
 }
 
-func runBridgeNew(env *execenv.Env, opts bridgeNewOptions) error {
+func runBridgeNew(ctx context.Context, env *execenv.Env, opts bridgeNewOptions) error {
 	var err error
 
 	if (opts.tokenStdin || opts.token != "" || opts.params.CredPrefix != "") &&
@@ -158,7 +162,7 @@ func runBridgeNew(env *execenv.Env, opts bridgeNewOptions) error {
 		return err
 	}
 
-	err = b.Configure(opts.params, !opts.nonInteractive)
+	err = b.Configure(ctx, opts.params, !opts.nonInteractive)
 	if err != nil {
 		return err
 	}
@@ -178,7 +182,6 @@ func promptTarget() (string, error) {
 		fmt.Printf("target: ")
 
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-
 		if err != nil {
 			return "", err
 		}

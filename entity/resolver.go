@@ -26,13 +26,15 @@ func Resolve[T Resolved](rs Resolvers, id Id) (T, error) {
 	for t, resolver := range rs {
 		switch t.(type) {
 		case T:
-			val, err := resolver.(Resolver).Resolve(id)
+			val, err := resolver.Resolve(id)
 			if err != nil {
 				return zero, err
 			}
+
 			return val.(T), nil
 		}
 	}
+
 	return zero, fmt.Errorf("unknown type to resolve")
 }
 

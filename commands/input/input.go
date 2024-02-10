@@ -7,8 +7,9 @@ package input
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,11 +40,20 @@ func LaunchEditorWithTemplate(repo repository.RepoCommonStorage, fileName string
 // This method returns the text that was read from the temporary file, or
 // an error if any step in the process failed.
 func LaunchEditor(repo repository.RepoCommonStorage, fileName string) (string, error) {
-	defer repo.LocalStorage().Remove(fileName)
+	var err error
+
+	defer func() {
+		stError := repo.LocalStorage().Remove(fileName)
+		if stError != nil {
+			err = errors.Join(err, stError)
+		}
+	}()
 
 	editor, err := repo.GetCoreEditor()
 	if err != nil {
-		return "", fmt.Errorf("Unable to detect default git editor: %v\n", err)
+		err = fmt.Errorf("unable to detect default git editor: %w", err)
+
+		return "", err
 	}
 
 	repo.LocalStorage().Root()
@@ -51,7 +61,6 @@ func LaunchEditor(repo repository.RepoCommonStorage, fileName string) (string, e
 	// bypass the interface but that's ok: we need that because we are communicating
 	// the absolute path to an external program
 	path := filepath.Join(repo.LocalStorage().Root(), fileName)
-
 	cmd, err := startInlineCommand(editor, path)
 	if err != nil {
 		// Running the editor directly did not work. This might mean that
@@ -64,18 +73,24 @@ func LaunchEditor(repo repository.RepoCommonStorage, fileName string) (string, e
 			cmd, err = startInlineCommand("sh", args...)
 		}
 	}
+
 	if err != nil {
-		return "", fmt.Errorf("Unable to start editor: %v\n", err)
+		err = fmt.Errorf("unable to start editor: %w", err)
+
+		return "", err
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("Editing finished with error: %v\n", err)
+		err = fmt.Errorf("editing finished with error: %w", err)
+
+		return "", err
 	}
 
-	output, err := ioutil.ReadFile(path)
-
+	output, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("Error reading edited file: %v\n", err)
+		err = fmt.Errorf("error reading edited file: %w", err)
+
+		return "", err
 	}
 
 	return string(output), err
@@ -89,18 +104,20 @@ func FromFile(fileName string) (string, error) {
 	if fileName == "-" {
 		stat, err := os.Stdin.Stat()
 		if err != nil {
-			return "", fmt.Errorf("Error reading from stdin: %v\n", err)
+			return "", fmt.Errorf("error reading from stdin: %w", err)
 		}
+
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
 			// There is no tty. This will allow us to read piped data instead.
-			output, err := ioutil.ReadAll(os.Stdin)
+			output, err := io.ReadAll(os.Stdin)
 			if err != nil {
-				return "", fmt.Errorf("Error reading from stdin: %v\n", err)
+				return "", fmt.Errorf("error reading from stdin: %w", err)
 			}
+
 			return string(output), err
 		}
 
-		fmt.Printf("(reading comment from standard input)\n")
+		fmt.Printf("(reading comment from standard input)")
 		var output bytes.Buffer
 		s := bufio.NewScanner(os.Stdin)
 		for s.Scan() {
@@ -110,10 +127,11 @@ func FromFile(fileName string) (string, error) {
 		return output.String(), nil
 	}
 
-	output, err := ioutil.ReadFile(fileName)
+	output, err := os.ReadFile(fileName)
 	if err != nil {
-		return "", fmt.Errorf("Error reading file: %v\n", err)
+		return "", fmt.Errorf("error reading file: %w", err)
 	}
+
 	return string(output), err
 }
 

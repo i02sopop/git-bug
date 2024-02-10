@@ -16,7 +16,7 @@ type userShowOptions struct {
 	fields string
 }
 
-func newUserShowCommand(env *execenv.Env) *cobra.Command {
+func newUserShowCommand(env *execenv.Env) (*cobra.Command, error) {
 	options := userShowOptions{}
 
 	cmd := &cobra.Command{
@@ -35,9 +35,12 @@ func newUserShowCommand(env *execenv.Env) *cobra.Command {
 	fields := []string{"email", "humanId", "id", "lastModification", "lastModificationLamports", "login", "metadata", "name"}
 	flags.StringVarP(&options.fields, "field", "f", "",
 		"Select field to display. Valid values are ["+strings.Join(fields, ",")+"]")
-	cmd.RegisterFlagCompletionFunc("field", completion.From(fields))
+	err := cmd.RegisterFlagCompletionFunc("field", completion.From(fields))
+	if err != nil {
+		return nil, err
+	}
 
-	return cmd
+	return cmd, nil
 }
 
 func runUserShow(env *execenv.Env, opts userShowOptions, args []string) error {

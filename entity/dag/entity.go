@@ -15,9 +15,11 @@ import (
 	"github.com/MichaelMure/git-bug/util/lamport"
 )
 
-const refsPattern = "refs/%s/%s"
-const creationClockPattern = "%s-create"
-const editClockPattern = "%s-edit"
+const (
+	refsPattern          = "refs/%s/%s"
+	creationClockPattern = "%s-create"
+	editClockPattern     = "%s-edit"
+)
 
 type OperationUnmarshaler func(raw json.RawMessage, resolver entity.Resolvers) (Operation, error)
 
@@ -224,12 +226,11 @@ func read[EntityT entity.Interface](def Definition, wrapper func(e *Entity) Enti
 	var createTime lamport.Time
 	var editTime lamport.Time
 	for _, pack := range oppSlice {
-		for _, operation := range pack.Operations {
-			ops = append(ops, operation)
-		}
+		ops = append(ops, pack.Operations...)
 		if pack.CreateTime > createTime {
 			createTime = pack.CreateTime
 		}
+
 		if pack.EditTime > editTime {
 			editTime = pack.EditTime
 		}
@@ -253,6 +254,7 @@ func readClockNoCheck(def Definition, repo repository.ClockedRepo, ref string) e
 	if err == repository.ErrNotFound {
 		return entity.NewErrNotFound(def.Typename)
 	}
+
 	if err != nil {
 		return err
 	}
@@ -319,7 +321,6 @@ func ReadAll[EntityT entity.Interface](def Definition, wrapper func(e *Entity) E
 
 		for _, ref := range refs {
 			e, err := read[EntityT](def, wrapper, repo, resolvers, ref)
-
 			if err != nil {
 				out <- entity.StreamedEntity[EntityT]{Err: err}
 				return
